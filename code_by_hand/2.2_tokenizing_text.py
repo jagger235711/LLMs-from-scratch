@@ -279,10 +279,10 @@ inputs, targets = next(data_iter)
 print("Token IDs:\n", inputs)
 print("\nInputs shape:\n", inputs.shape)
 
-# %%
+# %% 词元嵌入 token ID -> 向量
 token_embeddings = token_embedding_layer(inputs)
 print(token_embeddings.shape)
-# %%
+# %%绝对位置嵌入
 context_length = max_length
 pos_embedding_layer = torch.nn.Embedding(context_length, output_dim)
 pos_embeddings = pos_embedding_layer(torch.arange(context_length))
