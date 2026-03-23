@@ -44,3 +44,31 @@ context_vec_2 = torch.zeros(query.shape)
 for i, x_i in enumerate(inputs):
     context_vec_2 += attn_weights_2[i] * x_i
 print("Context Vector:", context_vec_2)
+
+# %% 3.3.2
+attn_scores = torch.empty(6, 6)
+for i, x_i in enumerate(inputs):
+    for j, x_j in enumerate(inputs):
+        attn_scores[i, j] = torch.dot(x_i, x_j)
+print(attn_scores)
+
+# %%矩阵乘法替代循环遍历
+attn_scores = inputs @ inputs.T
+print(attn_scores)
+
+# %%归一化
+attn_weights = torch.softmax(attn_scores, dim=-1)  # dim=-1 固定代表张量的最后一个维度
+print(attn_weights)
+print( sum(attn_weights[0]))
+print(attn_weights[0])
+# %%计算上下文向量
+print(attn_weights,attn_weights.shape)
+print("---------------")
+print(inputs, inputs.shape)
+all_context_vecs=attn_weights@inputs
+print(all_context_vecs)
+
+# %%
+print("Previous 2nd context vector:", context_vec_2)
+
+# %%3.4
