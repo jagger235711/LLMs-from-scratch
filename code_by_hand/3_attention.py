@@ -1,4 +1,6 @@
 # %%
+from typing import Any
+
 import torch
 
 inputs = torch.tensor(
@@ -177,5 +179,123 @@ print(
     "Context Vectors from Self-Attention v1 with matrices from v2:\n",
     sa_v1_apply_matrix_from_v2(inputs),
 )
+
+# %%3.5因果注意力
+queries = sa_v2.W_query(inputs)
+keys = sa_v2.W_key(inputs)
+attn_scores = queries @ keys.T
+attn_weights = torch.softmax(attn_scores / keys.shape[-1] ** 0.5, dim=-1)
+print(attn_weights)
+
+# %%
+context_length = attn_scores.shape[0]
+mask_simple = torch.tril(torch.ones(context_length, context_length))  # 创建掩码
+print(mask_simple)
+
+# %%
+masked_simple = attn_weights * mask_simple
+print(masked_simple)
+
+# %%
+row_sums = masked_simple.sum(dim=-1, keepdim=True)
+masked_simple_norm = masked_simple / row_sums
+print(masked_simple_norm)
+
+# %%
+mask = torch.triu(torch.ones(context_length, context_length), diagonal=1)
+masked = attn_scores.masked_fill(mask.bool(), -torch.inf)  # 负无穷
+print(masked)
+
+# %%
+attn_weights = torch.softmax(masked / keys.shape[-1] ** 0.5, dim=1)
+print(attn_weights)
+# %%
+torch.manual_seed(123)
+dropout = torch.nn.Dropout(p=0.5)
+example = torch.ones(6, 6)
+print("Before Dropout:\n", example)
+print("After Dropout:\n", dropout(example))
+# %%
+torch.manual_seed(123)
+print(dropout(attn_weights))
+# %%3.5.3实现紧凑的因果注意力类
+batch = torch.stack((inputs, inputs), dim=0)  # 模拟批处理输入
+print("Batch shape:", batch.shape)  # (batch_size, seq_length, d_in)
+
+
+# %%
+class CausalSelfAttention(nn.Module):
+    def __init__(self, d_in, d_out, context_length, dropout, qkv_bias=False):
+        super().__init__()
+        self.d_out = d_out
+        self.W_query = nn.Linear(d_in, d_out, bias=qkv_bias)
+        self.W_key = nn.Linear(d_in, d_out, bias=qkv_bias)
+        self.W_value = nn.Linear(d_in, d_out, bias=qkv_bias)
+        self.dropout = nn.Dropout(dropout)
+        self.register_buffer(
+            "mask",
+            torch.triu(
+                torch.ones(context_length, context_length), diagonal=1
+            ),  # torch.triu 是 PyTorch 中专门用于提取矩阵上三角部分 的函数，全称是 triangle upper（上三角），作用是把矩阵对角线以下的元素全部置为 0，只保留对角线及以上的元素。
+        )
+
+    def forward(self, inputs):
+        batch_size, seq_length, d_in = inputs.shape
+        queries = self.W_query(inputs)
+        keys = self.W_key(inputs)
+        values = self.W_value(inputs)
+
+        d_k = keys.shape[-1]
+        attn_scores = queries @ keys.transpose(1, 2)
+        attn_scores.masked_fill_(
+            self.mask.bool()[:seq_length, :seq_length], -torch.inf
+        )  # 在 PyTorch 中,操作  带有尾随下划线 是原地执行的, 避免不必要的 内存复制。
+        attn_weights = torch.softmax(attn_scores / d_k**5, dim=-1)
+        attn_weights = self.dropout(attn_weights)
+        context_vecs = attn_weights @ values
+        return context_vecs
+
+
+# %%
+torch.manual_seed(123)
+context_length = batch.shape[1]
+ca = CausalSelfAttention(d_in, d_out, context_length, 0.0)
+context_vecs = ca(batch)
+print("context_vecs.shape:", context_vecs.shape)
+
+
+# %%
+class MultiHeadAttentionWrapper(nn.Module):
+    def __init__(self, d_in, d_out, context_length, dropout, num_heads, qkv_bias=False):
+        super().__init__()
+        self.heads = nn.ModuleList(
+            [
+                CausalSelfAttention(d_in, d_out, context_length, dropout, qkv_bias)
+                for _ in range(num_heads)
+            ]
+        )
+
+    def forward(self, x):
+        return torch.cat([head(x) for head in self.heads], dim=-1)
+
+
+# %%
+torch.manual_seed(123)
+context_length = batch.shape[1]  # This is the number of tokens
+d_in, d_out = 3, 2
+mha = MultiHeadAttentionWrapper(d_in, d_out, context_length, 0.0, num_heads=2)
+context_vecs = mha(batch)
+print(context_vecs)
+print("context_vecs.shape:", context_vecs.shape)
+
+# %%
+torch.manual_seed(123)
+batch_single=batch[:,:1,:]
+context_length = batch_single.shape[1]  # This is the number of tokens
+d_in, d_out = 3, 2
+mha_2 = MultiHeadAttentionWrapper(d_in, d_out, context_length, 0.0, num_heads=2)
+context_vecs = mha_2(batch_single)
+print(context_vecs)
+print("context_vecs_2_dim.shape:", context_vecs.shape)
 
 # %%
