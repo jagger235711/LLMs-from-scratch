@@ -299,7 +299,7 @@ print(context_vecs)
 print("context_vecs_2_dim.shape:", context_vecs.shape)
 
 
-# %%Listing 3.5 一个高效的多头注意力类
+# %%Listing 3.5 一个高效的多头注意力类 comm_save/Listing 3.5_comm_save.md
 class MultiHeadAttention(nn.Module):
     def __init__(
         self, d_in, d_out, context_length, dropout, num_heads, qkv_bias=False
@@ -318,7 +318,7 @@ class MultiHeadAttention(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.register_buffer(
             "mask", torch.triu(torch.ones(context_length, context_length), diagonal=1)
-        )
+        )  # 这个掩码要跟着模型一起走，所以用 register_buffer 注册为模型的一个属性，这样在模型保存和加载时，掩码也会被正确处理。
 
     def forward(self, x):
         b, num_tokens, d_in = x.shape
@@ -326,6 +326,8 @@ class MultiHeadAttention(nn.Module):
         queries = self.W_query(x)
         values = self.W_value(x)
 
+        # 对注意力头进行切分(b, num_tokens, d_out) -> (b, num_tokens, num_heads, head_dim)
+        # .view() 只改变张量形状，不改变数据；要求元素总数一致（通常用于按新维度重排表示）
         keys = keys.view(b, num_tokens, self.num_heads, self.head_dim)
         values = values.view(b, num_tokens, self.num_heads, self.head_dim)
         queries = queries.view(b, num_tokens, self.num_heads, self.head_dim)
@@ -333,22 +335,41 @@ class MultiHeadAttention(nn.Module):
         keys = keys.transpose(1, 2)
         queries = queries.transpose(1, 2)
         values = values.transpose(1, 2)
+        attn_scores = queries @ keys.transpose(
+            2, 3
+        )  # (b, num_heads, num_tokens, num_tokens)
 
-        attn_scores = queries @ keys.transpose(2, 3)
         mask_bool = self.mask.bool()[:num_tokens, :num_tokens]
-
         attn_scores.masked_fill(mask_bool, -torch.inf)
 
         attn_weights = torch.softmax(attn_scores / keys.shape[-1] ** 0.5, dim=-1)
+
         attn_weights = self.dropout(attn_weights)
 
         context_vec = (attn_weights @ values).transpose(
             1, 2
         )  # (b, num_tokens, n_heads, head_dim)
-
         context_vec = context_vec.contiguous().view(b, num_tokens, self.d_out)
         context_vec = self.out_proj(context_vec)
         return context_vec
 
 
 # %%
+torch.manual_seed(123)
+batch_size, context_length, d_in = batch.shape
+d_out = 2
+mha = MultiHeadAttention(d_in, d_out, context_length, 0.0, num_heads=2)
+context_vecs = mha(batch)
+print(context_vecs)
+print("context_vecs.shape:", context_vecs.shape)
+
+# %%练习 3.3 初始化 GPT‐2 尺寸注意力模块
+batch = torch.randn(2, 1024, 768)  # 模拟一个批处理输入，形状为 (batch_size, context_length, d_in)
+
+batch_size, context_length, d_in = batch.shape
+assert d_in == 768, "For GPT-2, the input dimension should be 768"
+d_out = 768
+mha_GPT_like = MultiHeadAttention(d_in, d_out, context_length, 0.0, num_heads=12)
+context_vecs_GPT_like = mha_GPT_like(batch)
+print(context_vecs_GPT_like)
+print("context_vecs_GPT_like.shape:", context_vecs_GPT_like.shape)
