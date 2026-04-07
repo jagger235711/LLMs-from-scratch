@@ -122,4 +122,63 @@ mean = out_ln.var(dim=-1, unbiased=False, keepdim=True)
 print("Mean:\n", mean)
 print("Variance:\n", var)
 
+
+# %%
+class GELU(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x):
+        return (
+            0.5
+            * x
+            * (
+                1
+                + torch.tanh(
+                    torch.sqrt(torch.tensor(2.0 / torch.pi))
+                    * (x + 0.044715 * torch.pow(x, 3))
+                )
+            )
+        )
+
+
+# %%
+import matplotlib.pyplot as plt
+
+gelu, relu = GELU(), nn.ReLU()
+x = torch.linspace(-5, 5, 100)
+y_gelu = gelu(x)
+y_relu = relu(x)
+plt.figure(figsize=(10, 5))
+for i, (y, label) in enumerate(zip([y_gelu, y_relu], ["GELU", "ReLU"]), 1):
+    plt.subplot(1, 2, i)
+    plt.plot(x, y)
+    plt.title(f"{label} activation function")
+    plt.xlabel("x")
+    plt.ylabel(f"{label}(x)")
+    plt.grid(True)
+plt.tight_layout()
+plt.show()
+
+
+# %%
+class FeedForward(nn.Module):
+    def __init__(self, cfg):
+        super().__init__()
+        self.layers = nn.Sequential(
+            nn.Linear(cfg["emb_dim"], 4 * cfg["emb_dim"]),
+            GELU(),
+            nn.Linear(4 * cfg["emb_dim"], cfg["emb_dim"]),
+        )
+
+    def forward(self, x):
+        return self.layers(x)
+
+
+# %%
+ffn = FeedForward(GPT_CONFIG_124M)
+x = torch.rand(2, 3, 768)
+out = ffn(x)
+print(out.shape)
+
 # %%
