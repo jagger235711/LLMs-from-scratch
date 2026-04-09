@@ -181,4 +181,130 @@ x = torch.rand(2, 3, 768)
 out = ffn(x)
 print(out.shape)
 
+
+# %%
+class ExampleDeepNeuralNetwork(nn.Module):
+    def __init__(self, layer_sizes, use_shortcut):
+        super().__init__()
+        self.use_shortcut = use_shortcut
+        self.layers = nn.ModuleList(
+            [
+                nn.Sequential(nn.Linear(layer_sizes[0], layer_sizes[1]), GELU()),
+                nn.Sequential(nn.Linear(layer_sizes[1], layer_sizes[2]), GELU()),
+                nn.Sequential(nn.Linear(layer_sizes[2], layer_sizes[3]), GELU()),
+                nn.Sequential(nn.Linear(layer_sizes[3], layer_sizes[4]), GELU()),
+                nn.Sequential(nn.Linear(layer_sizes[4], layer_sizes[5]), GELU()),
+            ]
+        )
+
+    def forward(self, x):
+        for layer in self.layers:
+            layer_output = layer(x)
+            if self.use_shortcut and x.shape == layer_output.shape:
+                x = x + layer_output  # Add shortcut connection
+            else:
+                x = layer_output
+        return x
+
+
+# %%
+layer_sizes = [3, 3, 3, 3, 3, 1]
+sample_input = torch.tensor([[1.0, 0.0, -1.0]])
+torch.manual_seed(123)
+model_without_shortcut = ExampleDeepNeuralNetwork(layer_sizes, use_shortcut=False)
+
+
+# %%
+def print_gradients(model, x):
+    output = model(x)
+    target = torch.tensor([[0.0]])
+    loss = nn.MSELoss()
+    loss = loss(output, target)
+    loss.backward()
+    for name, param in model.named_parameters():
+        if "weight" in name:
+            print(f"{name} has gradient mean of {param.grad.abs().mean().item()}")
+
+
+# %%
+def print_gradients(model, x):
+    output = model(x)
+    target = torch.tensor([[0.0]])
+
+    loss_fn = nn.MSELoss()
+    loss = loss_fn(output, target)
+
+    loss.backward()
+
+    for name, param in model.named_parameters():
+        if "weight" in name:
+            print(f"{name} has gradient mean of {param.grad.abs().mean().item()}")
+
+
+# %%
+print_gradients(model_without_shortcut, sample_input)
+
+# %%
+torch.manual_seed(123)
+model_with_shortcut = ExampleDeepNeuralNetwork(layer_sizes, use_shortcut=True)
+print_gradients(model_with_shortcut, sample_input)
+
+# %%
+from ch3_attention import MultiHeadAttention
+
+
+"""md
+`ch3_attention.py` 与 `4_impl_GPT.py` 位于同一目录 `code_by_hand`。  
+在 Python 里，执行脚本时，当前工作目录（即脚本所在目录）会自动被加入到 `sys.path`。  
+因此，当 `4_impl_GPT.py` 运行时，Python 会在 `sys.path` 中搜索模块，首先会检查与脚本同目录下的文件。  
+由于 `ch3_attention.py` 就在同一目录，`from ch3_attention import MultiHeadAttention` 能直接找到并导入该模块，而不需要写 `code_by_hand.ch3_attention`。
+
+简而言之：  
+- **同目录** → 直接导入  
+- **不同目录** → 需要使用包路径或修改 `sys.path`
+
+如果你想把 `ch3_attention.py` 移到根目录或其他子目录，记得相应地调整导入语句或在目标目录下添加 `__init__.py` 以形成包。
+"""
+
+
+class TransformerBlock(nn.Module):
+    def __init__(self, cfg):
+        super().__init__()
+        self.attn = MultiHeadAttention(
+            d_in=cfg["emb_dim"],
+            d_out=cfg["emb_dim"],
+            context_length=cfg["context_length"],
+            num_heads=cfg["n_heads"],
+            dropout=cfg["drop_rate"],
+            qkv_bias=cfg["qkv_bias"],
+        )
+        self.ffn = FeedForward(cfg)
+        self.norm1 = LayerNorm(cfg["emb_dim"])
+        self.norm2 = LayerNorm(cfg["emb_dim"])
+        self.drop_shortcut = nn.Dropout(cfg["drop_rate"])
+
+    def forward(self, x):
+        shortcut = x
+        x = self.norm1(x)
+        x = self.attn(x)
+        x = self.drop_shortcut(x)
+        x = x + shortcut  # Add shortcut connection
+
+        shortcut = x
+        x = self.norm2(x)
+        x = self.ffn(x)
+        x = self.drop_shortcut(x)
+        x = x + shortcut  # Add shortcut connection
+        return x
+
+
+# %%
+torch.manual_seed(123)
+x = torch.rand(2, 4, 768)  # [batch_size, num_tokens, emb_dim]
+block = TransformerBlock(GPT_CONFIG_124M)
+output = block(x)
+
+print("Input shape:", x.shape)
+print("Output shape:", output.shape)
+
 # %%
