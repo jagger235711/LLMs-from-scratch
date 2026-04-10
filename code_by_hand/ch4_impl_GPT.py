@@ -437,3 +437,15 @@ print("Output length:", len(out[0]))
 decoded_text = tokenizer.decode(out.squeeze(0).tolist())
 print(decoded_text)
 # %%练习 4.3 使用独立的 dropout 参数
+embedding_layer=model.drop_emb
+shortcut_layer=model.trf_blocks[0].drop_shortcut
+multi_head_attention_module = model.trf_blocks[0].attn.dropout
+
+embedding_layer.p=0.2
+shortcut_layer.p=0.3
+multi_head_attention_module.p=0.4
+
+print(embedding_layer)
+print(shortcut_layer)
+print(multi_head_attention_module)
+
