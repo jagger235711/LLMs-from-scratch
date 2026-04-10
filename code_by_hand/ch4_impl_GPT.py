@@ -9,6 +9,29 @@ GPT_CONFIG_124M = {
     "qkv_bias": False,  # Query-Key-Value bias
 }
 
+GPT_CONFIG_medium = {
+    "vocab_size": 50257,  # Vocabulary size
+    "context_length": 1024,  # Context length
+    "emb_dim": 1024,  # Embedding dimension
+    "n_heads": 16,  # Number of attention heads
+    "n_layers": 24,  # Number of layers
+    "drop_rate": 0.1,  # Dropout rate
+    "qkv_bias": False,  # Query-Key-Value bias
+}
+
+GPT_CONFIG_large = {
+    "vocab_size": 50257,  # Vocabulary size
+    "context_length": 1024,  # Context length
+    "emb_dim": 768,  # Embedding dimension
+    "n_heads": 12,  # Number of attention heads
+    "n_layers": 12,  # Number of layers
+    "drop_rate": 0.1,  # Dropout rate
+    "qkv_bias": False,  # Query-Key-Value bias
+}
+
+GPT_CONFIG_124M = GPT_CONFIG_medium
+
+
 # %%
 import torch
 import torch.nn as nn
@@ -175,11 +198,11 @@ class FeedForward(nn.Module):
         return self.layers(x)
 
 
-# %%
-ffn = FeedForward(GPT_CONFIG_124M)
-x = torch.rand(2, 3, 768)
-out = ffn(x)
-print(out.shape)
+# # %%
+# ffn = FeedForward(GPT_CONFIG_124M)
+# x = torch.rand(2, 3, 768)
+# out = ffn(x)
+# print(out.shape)
 
 
 # %%
@@ -298,13 +321,119 @@ class TransformerBlock(nn.Module):
         return x
 
 
+# # %%
+# torch.manual_seed(123)
+# x = torch.rand(2, 4, 768)  # [batch_size, num_tokens, emb_dim]
+# block = TransformerBlock(GPT_CONFIG_124M)
+# output = block(x)
+
+# print("Input shape:", x.shape)
+# print("Output shape:", output.shape)
+
+
+# %%
+class GPTModel(nn.Module):
+    def __init__(self, cfg):
+        super().__init__()
+        self.tok_emb = nn.Embedding(cfg["vocab_size"], cfg["emb_dim"])
+        self.pos_emb = nn.Embedding(cfg["context_length"], cfg["emb_dim"])
+        self.drop_emb = nn.Dropout(cfg["drop_rate"])
+
+        self.trf_blocks = nn.Sequential(
+            *[
+                TransformerBlock(cfg) for _ in range(cfg["n_layers"])
+            ]  # 列表推导式 + 解包运算符 *
+        )
+        self.final_norm = LayerNorm(cfg["emb_dim"])
+        self.out_head = nn.Linear(cfg["emb_dim"], cfg["vocab_size"], bias=False)
+
+    def forward(self, in_idx):
+        batch_size, seq_len = in_idx.shape
+        tok_embeds = self.tok_emb(in_idx)
+
+        pos_embeds = self.pos_emb(torch.arange(seq_len, device=in_idx.device))
+        x = tok_embeds + pos_embeds
+        x = self.drop_emb(x)
+        x = self.trf_blocks(x)
+        x = self.final_norm(x)
+        logits = self.out_head(x)
+        return logits
+
+
 # %%
 torch.manual_seed(123)
-x = torch.rand(2, 4, 768)  # [batch_size, num_tokens, emb_dim]
-block = TransformerBlock(GPT_CONFIG_124M)
-output = block(x)
+model = GPTModel(GPT_CONFIG_124M)
+out = model(batch)
 
-print("Input shape:", x.shape)
-print("Output shape:", output.shape)
+print("Input batch:\n", batch)
+print("\nOutput shape:", out.shape)
+print(out)
 
 # %%
+total_params = sum(p.numel() for p in model.parameters())
+print(f"Total number of parameters: {total_params:,}")
+# %%
+print("Token embedding layer shape:", model.tok_emb.weight.shape)
+print("Output layer shape:", model.out_head.weight.shape)
+
+print(
+    "Are token embedding and output layers the same?", model.tok_emb == model.out_head
+)  # Should be False since they are different layers 实际上这里没用权重绑定
+# %%
+total_params_gpt2 = total_params - sum(p.numel() for p in model.out_head.parameters())
+print(
+    f"Number of trainable parameters "
+    f"considering weight tying: {total_params_gpt2:,}"
+)
+
+# %%
+# 前馈网络的参数数量
+num_ffn = sum(p.numel() for p in model.trf_blocks[0].ffn.parameters())
+# 多头注意力的参数数量
+num_multihead = sum(p.numel() for p in model.trf_blocks[00].attn.parameters())
+
+print(num_ffn)
+print(num_multihead)
+# %%
+total_size_bytes = total_params * 4
+total_size_mb = total_size_bytes / (1024 * 1024)
+print(f"Total size of the model: {total_size_mb:.2f} MB")
+
+
+# %%
+def generate_text_simple(model, idx, max_new_tokens, context_size):
+    for _ in range(max_new_tokens):
+        idx_cond = idx[
+            :, -context_size:
+        ]  # -context_size:（第二个切片）：表示对 序列维度（seq_len/token_length） 取最后 N 个元素。
+        with torch.no_grad():  # with = 自动进入 + 自动退出，保证资源安全释放。
+            logits = model(idx_cond)
+
+        logits = logits[:, -1, :]  # (batch, n_token, vocab_size) 只取最后一步
+        probas = torch.softmax(logits, dim=-1)  # (batch, vocab_size)
+        idx_next = torch.argmax(probas, dim=-1, keepdim=True)  # (batch, 1)
+        idx = torch.cat((idx, idx_next), dim=1)  # (batch, n_tokens+1)
+
+    return idx
+
+
+# %%
+start_context = "Hello, I am"
+encoded = tokenizer.encode(start_context)
+print("encoded:", encoded)
+encoded_tensor = torch.tensor(encoded).unsqueeze(0)  # Adds batch dimension
+print("encoded_tensor.shape:", encoded_tensor.shape)
+
+model.eval()  # Disables dropout since we are not training the model
+out = generate_text_simple(
+    model=model,
+    idx=encoded_tensor,
+    max_new_tokens=6,
+    context_size=GPT_CONFIG_124M["context_length"],
+)
+print("Output:", out)
+print("Output length:", len(out[0]))
+
+decoded_text = tokenizer.decode(out.squeeze(0).tolist())
+print(decoded_text)
+# %%练习 4.3 使用独立的 dropout 参数
