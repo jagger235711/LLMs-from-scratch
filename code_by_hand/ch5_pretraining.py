@@ -227,7 +227,7 @@ def train_model_simple(
     val_loader,
     optimizer,
     device,
-    num_epochs,
+    num_epochs,  # 10
     eval_freq,
     eval_iter,
     start_context,
@@ -236,16 +236,21 @@ def train_model_simple(
     train_losses, val_losses, track_tokens_seen = [], [], []
     token_seen, global_step = 0, -1
 
-    for epoch in range(num_epochs):  # 开始训练循环
+    for epoch in range(num_epochs):  # 开始训练循环 一个轮次是指一次完整 地遍历训练集。
         model.train()  # 设置模型为训练模式
-        for input_batch, target_batch in train_loader:  # 遍历训练数据加载器
+        for (
+            input_batch,
+            target_batch,
+        ) in train_loader:  # 遍历训练数据加载器 所有的遍历一遍训练集才遍历一边
             optimizer.zero_grad()  # 清零优化器的梯度
             loss = calc_loss_batch(
                 input_batch, target_batch, model, device
             )  # 计算当前批次的损失
             loss.backward()  # 反向传播计算梯度
             optimizer.step()  # 更新模型参数
-            token_seen += input_batch.numel()  # 更新已见标记数量
+            token_seen += (
+                input_batch.numel()
+            )  # 更新已见标记数量 .numel() 统计一个张量中 总共有多少个元素（返回一个整数）。
             global_step += 1  # 更新全局步数
 
             if global_step % eval_freq == 0:  # 每隔eval_freq步进行评估
@@ -262,7 +267,9 @@ def train_model_simple(
                 )  # 打印当前训练状态
 
                 # 生成文本示例以检查模型性能
-            generate_and_print_sample(model, tokenizer, device, start_context)
+            generate_and_print_sample(
+                model, tokenizer, device, start_context
+            )  # 每反向传播一次就生成一次文本示例
     return train_losses, val_losses, track_tokens_seen
 
 
@@ -307,4 +314,4 @@ def plot_losses(epochs_seen, tokens_seen, train_losses, val_losses):
 
 epochs_tensor = torch.linspace(0, num_epochs, len(train_losses))
 plot_losses(epochs_tensor, tokens_seen, train_losses, val_losses)
-# %%
+# %% 5.3
