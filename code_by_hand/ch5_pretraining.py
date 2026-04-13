@@ -163,3 +163,148 @@ def calc_loss_batch(input_batch, target_batch, model, device):
         logits.flatten(0, 1), target_batch.flatten()
     )
     return loss
+
+
+# %%
+def calc_loss_loader(data_loader, model, device, num_batches=None):
+    total_loss = 0.0
+    if len(data_loader) == 0:
+        return float("nan")
+    elif num_batches is None:  # 如果没有指定num_batches，就计算整个数据加载器的平均损失
+        num_batches = len(data_loader)
+    else:
+        num_batches = min(num_batches, len(data_loader))
+    for i, (input_batch, target_batch) in enumerate(data_loader):
+        if i < num_batches:
+            loss = calc_loss_batch(input_batch, target_batch, model, device)
+            total_loss += loss.item()
+        else:
+            break
+    return total_loss / num_batches
+
+
+# %%
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model.to(device)
+print(device)
+with torch.no_grad():
+    train_loss = calc_loss_loader(train_loader, model, device)
+    val_loss = calc_loss_loader(val_loader, model, device)
+print("Training loss:", train_loss)
+print("Validation loss:", val_loss)
+
+
+# %%
+def evaluate_model(model, train_loader, val_loader, device, eval_iter):
+    model.eval()  # 设置模型为评估模式 （这会禁用dropout等训练时特有的行为）
+    with torch.no_grad():  # 禁用评估过程中不需要的梯度跟踪，以减少计算开销
+        train_loss = calc_loss_loader(
+            train_loader, model, device, num_batches=eval_iter
+        )
+        val_loss = calc_loss_loader(val_loader, model, device, num_batches=eval_iter)
+    model.train()
+    return train_loss, val_loss
+
+
+# %%
+def generate_and_print_sample(model, tokenizer, device, start_context):
+    model.eval()
+    context_size = model.pos_emb.weight.shape[0]
+    encoded = text_to_token_ids(start_context, tokenizer).to(device)
+    with torch.no_grad():
+        token_ids = generate_text_simple(
+            model=model, idx=encoded, max_new_tokens=50, context_size=context_size
+        )
+    decoded_text = token_ids_to_text(token_ids, tokenizer)
+    print(decoded_text.replace("\n", " "))
+    model.train()
+
+
+# %%5.2训练大语言模型
+def train_model_simple(
+    model,
+    train_loader,
+    val_loader,
+    optimizer,
+    device,
+    num_epochs,
+    eval_freq,
+    eval_iter,
+    start_context,
+    tokenizer,
+):
+    train_losses, val_losses, track_tokens_seen = [], [], []
+    token_seen, global_step = 0, -1
+
+    for epoch in range(num_epochs):  # 开始训练循环
+        model.train()  # 设置模型为训练模式
+        for input_batch, target_batch in train_loader:  # 遍历训练数据加载器
+            optimizer.zero_grad()  # 清零优化器的梯度
+            loss = calc_loss_batch(
+                input_batch, target_batch, model, device
+            )  # 计算当前批次的损失
+            loss.backward()  # 反向传播计算梯度
+            optimizer.step()  # 更新模型参数
+            token_seen += input_batch.numel()  # 更新已见标记数量
+            global_step += 1  # 更新全局步数
+
+            if global_step % eval_freq == 0:  # 每隔eval_freq步进行评估
+                train_loss, val_loss = evaluate_model(
+                    model, train_loader, val_loader, device, eval_iter
+                )  # 计算训练损失和验证损失
+                train_losses.append(train_loss)  # 记录训练损失
+                val_losses.append(val_loss)  # 记录验证损失
+                track_tokens_seen.append(token_seen)  # 记录已见标记数量
+
+                print(
+                    f"Epoch {epoch+1}/{num_epochs}, Step {global_step}, Tokens Seen: {token_seen}, "
+                    f"Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}"
+                )  # 打印当前训练状态
+
+                # 生成文本示例以检查模型性能
+            generate_and_print_sample(model, tokenizer, device, start_context)
+    return train_losses, val_losses, track_tokens_seen
+
+
+# %%
+torch.manual_seed(123)
+model = GPTModel(GPT_CONFIG_124M)
+model.to(device)
+optimizer = torch.optim.AdamW(model.parameters(), lr=0.0004, weight_decay=0.1)
+num_epochs = 10
+train_losses, val_losses, tokens_seen = train_model_simple(
+    model,
+    train_loader,
+    val_loader,
+    optimizer,
+    device,
+    num_epochs=num_epochs,
+    eval_freq=5,
+    eval_iter=5,
+    start_context="Every effort moves you",
+    tokenizer=tokenizer,
+)
+
+# %%
+import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
+
+
+def plot_losses(epochs_seen, tokens_seen, train_losses, val_losses):
+    fig, ax1 = plt.subplots(figsize=(5, 3))
+    ax1.plot(epochs_seen, train_losses, label="Training loss")
+    ax1.plot(epochs_seen, val_losses, linestyle="-.", label="Validation loss")
+    ax1.set_xlabel("Epochs")
+    ax1.set_ylabel("Loss")
+    ax1.legend(loc="upper right")
+    ax1.xaxis.set_major_locator(MaxNLocator(integer=True))
+    ax2 = ax1.twiny()
+    ax2.plot(tokens_seen, train_losses, alpha=0)
+    ax2.set_xlabel("Tokens seen")
+    fig.tight_layout()
+    plt.show()
+
+
+epochs_tensor = torch.linspace(0, num_epochs, len(train_losses))
+plot_losses(epochs_tensor, tokens_seen, train_losses, val_losses)
+# %%
