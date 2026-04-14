@@ -400,3 +400,6 @@ token_index = vocab["pizza"]
 for index, probas in enumerate(scaled_probas):
     p = torch.softmax(probas, dim=0)
     print("温度：%d，概率：%f" % (index, p[token_index]))
+
+# %%
+# test
