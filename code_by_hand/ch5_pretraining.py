@@ -466,3 +466,44 @@ print("Output text:\n", token_ids_to_text(token_ids, tokenizer))
 # 将温度设置的非常小
 
 # %%5.4
+torch.save(model.state_dict(), "model.pth")
+model = GPTModel(GPT_CONFIG_124M)
+model.load_state_dict(torch.load("model.pth", map_location=device))
+model.eval()
+
+# %%
+torch.save(
+    {
+        "model_state_dict": model.state_dict(),
+        "optimizer_state_dict": optimizer.state_dict(),
+    },
+    "model_and_optimizer.pth",
+)
+
+# %%
+checkpoint = torch.load("model_and_optimizer.pth", map_location=device)
+model = GPTModel(GPT_CONFIG_124M)
+model.load_state_dict(checkpoint["model_state_dict"])
+optimizer = torch.optim.AdamW(model.parameters(), lr=5e-4, weight_decay=0.1)
+optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+model.train()
+# %% 5.5 加载预训练权重
+import urllib.request
+
+url = (
+    "https://raw.githubusercontent.com/rasbt/"
+    "LLMs-from-scratch/main/ch05/"
+    "01_main-chapter-code/gpt_download.py"
+)
+filename = url.split("/")[-1]
+urllib.request.urlretrieve(url, filename)
+
+# %%
+from gpt_download import download_and_load_gpt2
+
+settings, params = download_and_load_gpt2(model_size="124M", models_dir="gpt2")
+
+# %%
+print("Settings:", settings) 
+print("Parameter dictionary keys:", params.keys())
+# %%

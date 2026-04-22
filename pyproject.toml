@@ -32,6 +32,7 @@ dependencies = [
   "httpx[socks]>=0.28.1",
   "httpcore[socks]>=1.0.9",
   "socksio>=1.0.0",
+  "tensorflow>=2.20.0",
 ]
 
 [tool.uv.sources]
