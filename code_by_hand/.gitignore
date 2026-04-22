@@ -1,6 +1,0 @@
-*.pth
-code_by_hand/gpt2/124M/checkpoint
-code_by_hand/gpt2/124M/hparams.json
-code_by_hand/gpt2/124M/model.ckpt.data-00000-of-00001
-code_by_hand/gpt2/124M/model.ckpt.index
-code_by_hand/gpt2/124M/model.ckpt.meta
