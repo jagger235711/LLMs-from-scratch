@@ -1,6 +1,8 @@
 # %%
 import torch
-from ch4_impl_GPT import GPTModel
+from previous_chapters import GPTModel
+
+# from previous_chapters import GPTModel
 
 GPT_CONFIG_124M = {
     "vocab_size": 50257,
@@ -106,7 +108,8 @@ print("Flattened targets:", targets_flat.shape)
 loss = torch.nn.functional.cross_entropy(logits_flat, targets_flat)
 print(loss)
 # %%
-file_path = "the-verdict.txt"
+# file_path = "the-verdict.txt"
+file_path = "/home/wwj/src/LLMs-from-scratch/code_by_hand/the-verdict.txt"
 with open(file_path, "r", encoding="utf-8") as file:
     text_data = file.read()
 
@@ -274,23 +277,23 @@ def train_model_simple(
 
 
 # %%
-torch.manual_seed(123)
-model = GPTModel(GPT_CONFIG_124M)
-model.to(device)
-optimizer = torch.optim.AdamW(model.parameters(), lr=0.0004, weight_decay=0.1)
-num_epochs = 10
-train_losses, val_losses, tokens_seen = train_model_simple(
-    model,
-    train_loader,
-    val_loader,
-    optimizer,
-    device,
-    num_epochs=num_epochs,
-    eval_freq=5,
-    eval_iter=5,
-    start_context="Every effort moves you",
-    tokenizer=tokenizer,
-)
+# torch.manual_seed(123)
+# model = GPTModel(GPT_CONFIG_124M)
+# model.to(device)
+# optimizer = torch.optim.AdamW(model.parameters(), lr=0.0004, weight_decay=0.1)
+# num_epochs = 10
+# train_losses, val_losses, tokens_seen = train_model_simple(
+#     model,
+#     train_loader,
+#     val_loader,
+#     optimizer,
+#     device,
+#     num_epochs=num_epochs,
+#     eval_freq=5,
+#     eval_iter=5,
+#     start_context="Every effort moves you",
+#     tokenizer=tokenizer,
+# )
 
 # %%
 import matplotlib.pyplot as plt
@@ -493,27 +496,27 @@ optimizer = torch.optim.AdamW(model.parameters(), lr=5e-4, weight_decay=0.1)
 optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
 model.train()
 # %% 5.5 加载预训练权重
-import urllib.request
+# import urllib.request
 
-url = (
-    "https://raw.githubusercontent.com/rasbt/"
-    "LLMs-from-scratch/main/ch05/"
-    "01_main-chapter-code/gpt_download.py"
-)
-filename = url.split("/")[-1]
-urllib.request.urlretrieve(url, filename)
+# url = (
+#     "https://raw.githubusercontent.com/rasbt/"
+#     "LLMs-from-scratch/main/ch05/"
+#     "01_main-chapter-code/gpt_download.py"
+# )
+# filename = url.split("/")[-1]
+# urllib.request.urlretrieve(url, filename)
 
-# %%
-from gpt_download import download_and_load_gpt2
+# # %%
+# from gpt_download import download_and_load_gpt2
 
-settings, params = download_and_load_gpt2(model_size="124M", models_dir="gpt2")
+# settings, params = download_and_load_gpt2(model_size="124M", models_dir="gpt2")
 
-# %%
-print("Settings:", settings)
-print("Parameter dictionary keys:", params.keys())
-# %%
-print(params["wte"])
-print("Token embedding weight tensor dimensions:", params["wte"].shape)
+# # %%
+# print("Settings:", settings)
+# print("Parameter dictionary keys:", params.keys())
+# # %%
+# print(params["wte"])
+# print("Token embedding weight tensor dimensions:", params["wte"].shape)
 
 # %%
 model_configs = {
@@ -534,7 +537,7 @@ NEW_CONFIG.update(
 NEW_CONFIG.update({"context_length": 1024})
 # print(NEW_CONFIG)
 NEW_CONFIG.update({"qkv_bias": True})
-# %%
+# # %%
 gpt = GPTModel(NEW_CONFIG)
 gpt.eval()
 
@@ -548,13 +551,14 @@ def assign(left, right):
     return torch.nn.Parameter(torch.tensor(right))
 
 
-# %%
+# # %%
 import numpy as np
 
 
 def load_weights_into_gpt(gpt, params):
     gpt.pos_emb.weight = assign(gpt.pos_emb.weight, params["wpe"])
     gpt.tok_emb.weight = assign(gpt.tok_emb.weight, params["wte"])
+
     for b in range(len(params["blocks"])):
         # 在每个block中，把每个layer的权重和偏置都加载到GPT模型中
         q_w, k_w, v_w = np.split(  # q,k,v
@@ -596,7 +600,8 @@ def load_weights_into_gpt(gpt, params):
             params["blocks"][b]["mlp"]["c_fc"]["w"].T,
         )
         gpt.trf_blocks[b].ff.layers[0].bias = assign(
-            gpt.trf_blocks[b].ff.layers[0].bias, params["blocks"][b]["mlp"]["c_fc"]["b"]
+            gpt.trf_blocks[b].ff.layers[0].bias,
+            params["blocks"][b]["mlp"]["c_fc"]["b"],
         )
         gpt.trf_blocks[b].ff.layers[2].weight = assign(
             gpt.trf_blocks[b].ff.layers[2].weight,
@@ -619,15 +624,17 @@ def load_weights_into_gpt(gpt, params):
         gpt.trf_blocks[b].norm2.shift = assign(
             gpt.trf_blocks[b].norm2.shift, params["blocks"][b]["ln_2"]["b"]
         )
+
     #   最后一层归一化 + 输出头
     gpt.final_norm.scale = assign(gpt.final_norm.scale, params["g"])
     gpt.final_norm.shift = assign(gpt.final_norm.shift, params["b"])
     gpt.out_head.weight = assign(gpt.out_head.weight, params["wte"])  # 权重绑定
 
 
-# %%
 load_weights_into_gpt(gpt, params)
 gpt.to(device)
+
+
 # %%
 torch.manual_seed(123)
 token_ids = generate(
@@ -638,6 +645,31 @@ token_ids = generate(
     top_k=50,  # 候选范围
     temperature=1.5,  # 随机性
 )
-print("Output text:\n", token_ids_to_text(token_ids, tokenizer))
+print(
+    "Output text:\n", token_ids_to_text(token_ids, tokenizer)
+)  # 不知道是transformer block 的哪里写错了。。。
+
+
+# %%练习 5.5
+# 使用来自OpenAI的预训练权重,在“The Verdict”数据集上计算GPT模型的训练和验证集 损失。
+# %%
+torch.manual_seed(123)
+model = gpt
+model.to(device)
+optimizer = torch.optim.AdamW(model.parameters(), lr=1e-5, weight_decay=0.1)
+num_epochs = 5
+train_losses, val_losses, tokens_seen = train_model_simple(
+    model,
+    train_loader,
+    val_loader,
+    optimizer,
+    device,
+    num_epochs=num_epochs,
+    eval_freq=5,
+    eval_iter=5,
+    start_context="Every effort moves you",
+    tokenizer=tokenizer,
+)
+
 
 # %%

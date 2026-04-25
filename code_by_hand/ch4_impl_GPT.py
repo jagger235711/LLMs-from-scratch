@@ -275,7 +275,6 @@ print_gradients(model_with_shortcut, sample_input)
 # %%
 from ch3_attention import MultiHeadAttention
 
-
 """md
 `ch3_attention.py` 与 `4_impl_GPT.py` 位于同一目录 `code_by_hand`。  
 在 Python 里，执行脚本时，当前工作目录（即脚本所在目录）会自动被加入到 `sys.path`。  
@@ -290,10 +289,10 @@ from ch3_attention import MultiHeadAttention
 """
 
 
-class TransformerBlock(nn.Module):
+class TransformerBlock(nn.Module):#不知道是哪里写错了，推理有问题
     def __init__(self, cfg):
         super().__init__()
-        self.attn = MultiHeadAttention(
+        self.att = MultiHeadAttention(
             d_in=cfg["emb_dim"],
             d_out=cfg["emb_dim"],
             context_length=cfg["context_length"],
@@ -301,7 +300,7 @@ class TransformerBlock(nn.Module):
             dropout=cfg["drop_rate"],
             qkv_bias=cfg["qkv_bias"],
         )
-        self.ffn = FeedForward(cfg)
+        self.ff = FeedForward(cfg)
         self.norm1 = LayerNorm(cfg["emb_dim"])
         self.norm2 = LayerNorm(cfg["emb_dim"])
         self.drop_shortcut = nn.Dropout(cfg["drop_rate"])
@@ -309,13 +308,13 @@ class TransformerBlock(nn.Module):
     def forward(self, x):
         shortcut = x
         x = self.norm1(x)
-        x = self.attn(x)
+        x = self.att(x)
         x = self.drop_shortcut(x)
         x = x + shortcut  # Add shortcut connection
 
         shortcut = x
         x = self.norm2(x)
-        x = self.ffn(x)
+        x = self.ff(x)
         x = self.drop_shortcut(x)
         x = x + shortcut  # Add shortcut connection
         return x
@@ -331,7 +330,9 @@ class TransformerBlock(nn.Module):
 # print("Output shape:", output.shape)
 
 
+
 # %%
+
 class GPTModel(nn.Module):
     def __init__(self, cfg):
         super().__init__()
@@ -340,19 +341,17 @@ class GPTModel(nn.Module):
         self.drop_emb = nn.Dropout(cfg["drop_rate"])
 
         self.trf_blocks = nn.Sequential(
-            *[
-                TransformerBlock(cfg) for _ in range(cfg["n_layers"])
-            ]  # 列表推导式 + 解包运算符 *
-        )
+            *[TransformerBlock(cfg) for _ in range(cfg["n_layers"])]
+        )  # 列表推导式 + 解包运算符 *
+
         self.final_norm = LayerNorm(cfg["emb_dim"])
         self.out_head = nn.Linear(cfg["emb_dim"], cfg["vocab_size"], bias=False)
 
     def forward(self, in_idx):
         batch_size, seq_len = in_idx.shape
         tok_embeds = self.tok_emb(in_idx)
-
         pos_embeds = self.pos_emb(torch.arange(seq_len, device=in_idx.device))
-        x = tok_embeds + pos_embeds
+        x = tok_embeds + pos_embeds  # Shape [batch_size, num_tokens, emb_size]
         x = self.drop_emb(x)
         x = self.trf_blocks(x)
         x = self.final_norm(x)
@@ -388,9 +387,9 @@ print(
 
 # %%
 # 前馈网络的参数数量
-num_ffn = sum(p.numel() for p in model.trf_blocks[0].ffn.parameters())
+num_ffn = sum(p.numel() for p in model.trf_blocks[0].ff.parameters())
 # 多头注意力的参数数量
-num_multihead = sum(p.numel() for p in model.trf_blocks[00].attn.parameters())
+num_multihead = sum(p.numel() for p in model.trf_blocks[00].att.parameters())
 
 print(num_ffn)
 print(num_multihead)
@@ -439,7 +438,7 @@ print(decoded_text)
 # %%练习 4.3 使用独立的 dropout 参数
 embedding_layer=model.drop_emb
 shortcut_layer=model.trf_blocks[0].drop_shortcut
-multi_head_attention_module = model.trf_blocks[0].attn.dropout
+multi_head_attention_module = model.trf_blocks[0].att.dropout
 
 embedding_layer.p=0.2
 shortcut_layer.p=0.3
@@ -448,4 +447,3 @@ multi_head_attention_module.p=0.4
 print(embedding_layer)
 print(shortcut_layer)
 print(multi_head_attention_module)
-
