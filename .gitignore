@@ -357,3 +357,6 @@ code_by_hand/gpt2/124M/model.ckpt.index
 code_by_hand/gpt2/124M/model.ckpt.meta
 gpt_download.py
 gpt2
+*.csv
+*.tsv
+code_by_hand/sms_spam_collection/
