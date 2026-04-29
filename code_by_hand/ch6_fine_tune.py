@@ -231,10 +231,118 @@ print("Outputs:\n", outputs)
 print("Outputs dimensions:", outputs.shape)  # [1,4,2]  batch_size,num_tokens,emb_dim
 # %%
 # 序列中的最后一个标记积累了最多信息,因为 它唯一能够访问所有先前标记的数据。因此,在我们的垃圾邮件分类任务中,我们在 微调过程中关注这个最后一个标记。
-first_token=outputs[:,0,:]
+first_token = outputs[:, 0, :]
 last_token = outputs[:, -1, :]
 
 print("first output token:", first_token)
 print("Last output token:", last_token)
+
+# %%
+probas = torch.softmax(last_token, dim=-1)
+label = torch.argmax(probas)
+print("Class label:", label.item())
+
+# %%
+logits = last_token
+label = torch.argmax(logits)
+print("Class label:", label.item())
+
+
+# %%计算分类准确率
+def calc_accuracy_loader(data_loader, model, device, num_batches=None):
+    model.eval()
+    correct_predictions, num_examples = 0, 0
+
+    if num_batches is None:
+        num_batches = len(data_loader)
+    else:
+        num_batches = min(num_batches, len(data_loader))
+    for i, (input_batch, target_batch) in enumerate(data_loader):
+        if i < num_batches:
+            input_batch = input_batch.to(device)
+            target_batch = target_batch.to(device)
+
+            with torch.no_grad():
+                logits = model(input_batch)[:, -1, :]
+            predicted_labels = torch.argmax(logits, dim=-1)
+
+            num_examples += predicted_labels.shape[0]
+            correct_predictions += (predicted_labels == target_batch).sum().item()
+        else:
+            break
+    return correct_predictions / num_examples
+
+
+# %%
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model.to(device)
+
+torch.manual_seed(123)
+train_accuracy = calc_accuracy_loader(train_loader, model, device, num_batches=10)
+val_accuracy = calc_accuracy_loader(val_loader, model, device, num_batches=10)
+test_accuracy = calc_accuracy_loader(test_loader, model, device, num_batches=10)
+
+print(f"Training accuracy: {train_accuracy*100:.2f}%")
+print(f"Validation accuracy: {val_accuracy*100:.2f}%")
+print(f"Test accuracy: {test_accuracy*100:.2f}%")
+
+
+# %%
+def calc_loss_batch(input_batch, target_batch, model, device):
+    input_batch = input_batch.to(device)
+    target_batch = target_batch.to(device)
+
+    logits = model(input_batch)[:, -1, :]  # Logits of last output token
+    loss_fn = torch.nn.CrossEntropyLoss()
+    loss = loss_fn(logits, target_batch)
+    return loss
+
+
+# %%
+def calc_loss_loader(data_loader, model, device, num_batches=None):
+    total_loss = 0.0
+    if len(data_loader) == 0:
+        return float("nan")
+    elif num_batches is None:
+        num_batches = len(data_loader)
+    else:
+        num_batches = min(num_batches, len(data_loader))
+    for i, (input_batch, target_batch) in enumerate(
+        data_loader
+    ):  # 元组解包 dataloader 返回的每个元素都是一个批次，包含输入和目标 数据在前标签在后
+        if i < num_batches:
+            loss = calc_loss_batch(input_batch, target_batch, model, device)
+            total_loss += loss.item()
+        else:
+            break
+    return total_loss / num_batches
+
+
+# %%计算每个数据集的初始损失
+with torch.no_grad():
+    train_loss = calc_loss_loader(train_loader, model, device, num_batches=5)
+    val_loss = calc_loss_loader(val_loader, model, device, num_batches=5)
+    test_loss = calc_loss_loader(test_loader, model, device, num_batches=5)
+print(f"Training loss: {train_loss:.3f}")
+print(f"Validation loss: {val_loss:.3f}")
+print(f"Test loss: {test_loss:.3f}")
+
+# %%
+# 取 1 个批次出来看
+for batch in train_loader:
+    # batch 就是 (input_batch, target_batch)
+    inputs, labels = batch
+
+    print("=== 查看一个批次 ===")
+    print("输入数据形状:", inputs.shape)
+    print("标签形状:", labels.shape)
+    print("输入数据类型:", type(inputs))
+    print("标签数据类型:", type(labels))
+
+    # 想看真实数据就打印
+    # print("输入数据内容:\n", inputs)
+    # print("标签内容:\n", labels)
+
+    break  # 只看第一个批次，看完就退出
 
 # %%
