@@ -360,3 +360,4 @@ gpt2
 *.csv
 *.tsv
 code_by_hand/sms_spam_collection/
+*.pdf
