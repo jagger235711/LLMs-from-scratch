@@ -321,6 +321,157 @@ test_loader = DataLoader(
 # %%
 print("Train loader:")
 for inputs, targets in train_loader:
-    print(inputs.shape, targets.shape)#[batch_size,num_tokens] 维度1的大小取决于最长的那个样本
+    print(
+        inputs.shape, targets.shape
+    )  # [batch_size,num_tokens] 维度1的大小取决于最长的那个样本
+
+# %%
+from gpt_download import download_and_load_gpt2
+from previous_chapters import GPTModel
+from previous_chapters import load_weights_into_gpt
+
+BASE_CONFIG = {
+    "vocab_size": 50257,  # Vocabulary size
+    "context_length": 1024,  # Context length
+    "drop_rate": 0.0,  # Dropout rate
+    "qkv_bias": True,  # Query-key-value bias
+}
+
+model_configs = {
+    "gpt2-small (124M)": {"emb_dim": 768, "n_layers": 12, "n_heads": 12},
+    "gpt2-medium (355M)": {"emb_dim": 1024, "n_layers": 24, "n_heads": 16},
+    "gpt2-large (774M)": {"emb_dim": 1280, "n_layers": 36, "n_heads": 20},
+    "gpt2-xl (1558M)": {"emb_dim": 1600, "n_layers": 48, "n_heads": 25},
+}
+
+CHOOSE_MODEL = "gpt2-medium (355M)"
+BASE_CONFIG.update(model_configs[CHOOSE_MODEL])
+
+model_size = CHOOSE_MODEL.split(" ")[-1].lstrip("(").rstrip(")")
+settings, params = download_and_load_gpt2(model_size=model_size, models_dir="gpt2")
+
+model = GPTModel(BASE_CONFIG)
+load_weights_into_gpt(model, params)
+model.eval()
+# %%
+
+torch.manual_seed(123)
+input_text = format_input(val_data[0])
+print(input_text)
+
+# %%
+from previous_chapters import generate, text_to_token_ids, token_ids_to_text
+
+token_ids = generate(
+    model=model,
+    idx=text_to_token_ids(input_text, tokenizer),
+    max_new_tokens=35,
+    context_size=BASE_CONFIG["context_length"],
+    eos_id=50256,
+)
+generated_text = token_ids_to_text(token_ids, tokenizer)
+
+# %%
+response_text = generated_text[len(input_text) :].strip()
+print(response_text)
+# %%
+from previous_chapters import calc_loss_loader, train_model_simple
+
+model.to(device)
+torch.manual_seed(123)
+with torch.no_grad():
+    train_loss = calc_loss_loader(train_loader, model, device, num_batches=5)
+    val_loss = calc_loss_loader(val_loader, model, device, num_batches=5)
+print("Training loss:", train_loss)
+print("Validation loss:", val_loss)
+
+# %%
+import time
+
+start_time = time.time()
+torch.manual_seed(123)
+optimizer = torch.optim.AdamW(model.parameters(), lr=0.00005, weight_decay=0.1)
+num_epochs = 2
+
+train_losses, val_losses, tokens_seen = train_model_simple(
+    model,
+    train_loader,
+    val_loader,
+    optimizer,
+    device,
+    num_epochs=num_epochs,
+    eval_freq=5,
+    eval_iter=5,
+    start_context=format_input(val_data[0]),
+    tokenizer=tokenizer,
+)
+
+end_time = time.time()
+execution_time_minutes = (end_time - start_time) / 60
+print(f"Training completed in {execution_time_minutes:.2f} minutes.")
+
+# %%
+from previous_chapters import plot_losses
+
+epochs_tensor = torch.linspace(0, num_epochs, len(train_losses))
+plot_losses(epochs_tensor, tokens_seen, train_losses, val_losses)
+
+# %%练习7.3
+
+# %%
+
+torch.manual_seed(123)
+
+for entry in test_data[:3]:
+    input_text = format_input(entry)
+    token_ids = generate(
+        model=model,
+        idx=text_to_token_ids(input_text, tokenizer).to(device),
+        max_new_tokens=256,
+        context_size=BASE_CONFIG["context_length"],
+        eos_id=50256,
+    )
+    generated_text = token_ids_to_text(token_ids, tokenizer)
+
+    response_text = (
+        generated_text[len(input_text) :].replace("### Response:", "").strip()
+    )
+    print(input_text)
+    print(f"\nCorrect response:\n>> {entry['output']}")
+    print(f"\nModel response:\n>> {response_text.strip()}")
+    print("-------------------------------------")
+
+# %%
+from tqdm import tqdm
+
+for i, entry in tqdm(enumerate(test_data), total=len(test_data)):
+    input_text = format_input(entry)
+
+    token_ids = generate(
+        model=model,
+        idx=text_to_token_ids(input_text, tokenizer).to(device),
+        max_new_tokens=256,
+        context_size=BASE_CONFIG["context_length"],
+        eos_id=50256,
+    )
+    generated_text = token_ids_to_text(token_ids, tokenizer)
+
+    response_text = (
+        generated_text[len(input_text) :].replace("### Response:", "").strip()
+    )
+    test_data[i]["model_response"] = response_text
+
+with open("instruction-data-with-response.json", "w") as file:
+    json.dump(test_data, file, indent=4)
+
+# %%
+print(test_data[0])
+
+# %%
+import re
+
+file_name = f"{re.sub(r'[ ()]', '', CHOOSE_MODEL) }-sft.pth"
+torch.save(model.state_dict(), file_name)
+print(f"Model saved as {file_name}")
 
 # %%
