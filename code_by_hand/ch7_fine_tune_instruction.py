@@ -416,7 +416,7 @@ from previous_chapters import plot_losses
 epochs_tensor = torch.linspace(0, num_epochs, len(train_losses))
 plot_losses(epochs_tensor, tokens_seen, train_losses, val_losses)
 
-# %%练习7.3
+# %%练习7.3 在Alpaca上微调预训练模型
 
 # %%
 
