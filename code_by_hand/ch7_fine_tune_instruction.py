@@ -257,7 +257,8 @@ def custom_collate_mask_instruction_fn(
             targets = targets[:allowed_max_length]
 
         if mask_instruction == True:  # TODO：掩码指令文本
-            pass
+            targets[:len(new_item)] = ignore_index#针对目标文本掩码除回复外的所有内容
+            # pass
 
         inputs_lst.append(inputs)
         targets_lst.append(targets)
@@ -360,8 +361,8 @@ input_text = format_input(val_data[0])
 print(input_text)
 
 # %%
-from previous_chapters import generate, text_to_token_ids, token_ids_to_text
-
+from previous_chapters import  text_to_token_ids, token_ids_to_text
+from ch5_pretraining import generate
 token_ids = generate(
     model=model,
     idx=text_to_token_ids(input_text, tokenizer),
